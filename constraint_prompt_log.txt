@@ -1,0 +1,47 @@
+Prompt 1: "Persona Interpretation. In the LAB_MANUAL.docx, you are given a persona describing the target user of the system. Briefly describe in 3-5 sentences: What are the key characteristics of this persona? Which aspects of the persona might affect system behavior?"
+Purpose: Clarify the main traits of the persona and identify which traits influence system behavior.
+Response summary: The response identified Jane as a busy professional who depends on automation, prefers concise interactions, and expects reliable, predictable behavior. It also highlighted that notification overload, duplicate messages, and inconsistency would affect how the system should behave.
+
+Prompt 2: "redo this knowing the context: Persona Interpretation..."
+Purpose: Revise the earlier interpretation so it sounds clearer and better fits the lab context.
+Response summary: The response rewrote the paragraph in a cleaner and more formal way while keeping the same meaning. It emphasized reliability, conflict resolution, predictable behavior, and low interaction.
+
+Prompt 3: "Main Goal. Describe in 1-2 sentences the objective of the system."
+Purpose: Clarify the overall objective of the system before identifying requirements and constraints.
+Response summary: The response described the system objective as automating reminders and event registrations with minimal manual effort. It also noted that the system should handle conflicts, waitlists, and notifications consistently.
+
+Prompt 4: "Inputs. List the main inputs to the system."
+Purpose: Identify the main data and actions the system receives from users or the environment.
+Response summary: The response listed core inputs such as event capacity, user identifier, registration request, cancellation request, and status query. It also noted that the sequence of operations matters for deterministic behavior.
+
+Prompt 5: "Output. Describe what the system returns or produces."
+Purpose: Clarify what system results are visible after operations are processed.
+Response summary: The response explained that the system returns the updated registration state, including the registered list and FIFO waitlist. It also returns a user’s status when queried.
+
+Prompt 6: "Functional Requirements. After carefully reviewing the two given personas, list as many functional requirements as possible from the specification description."
+Purpose: Brainstorm possible functional requirements suggested by the personas and system context.
+Response summary: The response generated a broad list of possible requirements related to reminders, notifications, event registration, waitlisting, explanations, and error handling. It helped identify areas that might need refinement for the final student-written version.
+
+Prompt 7: "New Functional Requirements. After carefully reviewing the two new given personas, is there any new requirements to be added or to be changed? If so, please specify."
+Purpose: Check whether the new personas imply additional or modified requirements compared with the earlier system.
+Response summary: The response suggested several additions and modifications, especially around explanations, deterministic behavior, notification control, and explicit handling of errors and edge cases. It showed how the personas extend the earlier requirements.
+
+Prompt 8: "Constraints. List at least 6 constraints and assumptions relevant to the problem..."
+Purpose: Explore which persona needs could be operationalized into concrete, testable constraints.
+Response summary: The response proposed multiple constraints connected to Jane and Mo, such as deterministic ordering, automatic conflict handling, explicit error reporting, and clear explanations. It also estimated current support levels relative to the Lab 8 system.
+
+Prompt 9: "Acceptance Criteria. Minimum 6 required. Each AC must link to at least one Constraint ID."
+Purpose: Check whether the candidate constraints could be verified with concrete, testable acceptance criteria.
+Response summary: The response created example Given-When-Then acceptance criteria linked to the previously discussed constraints. This helped show how the constraints could be tested in practice.
+
+Prompt 10: "Edge Cases. List at least 6 edge or boundary cases the system must handle."
+Purpose: Identify unusual or boundary scenarios that might expose weaknesses in the system design.
+Response summary: The response listed cases such as capacity = 0, duplicate registration, missing-user cancellation, repeated sequences, and promotion after cancellation. These examples helped connect personas to robustness concerns.
+
+Prompt 11: "Tie-Breaking Rules. If multiple valid outcomes exist, explain how the system should deterministically choose one."
+Purpose: Clarify how the system should behave consistently when more than one valid outcome is possible.
+Response summary: The response proposed deterministic rules for FIFO waitlist promotion, arrival-order processing, sequential cancellations, query timing, and re-registration after cancellation. It reinforced the persona need for predictability.
+
+Prompt 12: "Traceability Table. Complete the table below..."
+Purpose: Understand how constraints, acceptance criteria, and tests can be linked together for validation.
+Response summary: The response mapped each major constraint to at least one acceptance criterion and suggested related test names. This helped show how persona-derived constraints could be traced through verification artifacts.
