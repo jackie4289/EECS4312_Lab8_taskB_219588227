@@ -1,6 +1,54 @@
-## Student Name:
-## Student ID: 
+## Student Name: jackie Lin
+## Student ID: 219588227
 
-Prompt #1: {}
-Response #1: {}
---------------------------------------------------
+Prompt 1: I am working on a Lab 9 event registration system.
+
+System description:
+The system manages registration for a single event with a fixed capacity. Users can register for the event. If the event is full, additional users are placed on a FIFO waitlist. If a registered user cancels, the earliest waitlisted user is automatically promoted. Users can also cancel and query their current status.
+
+Personas:
+Jane Adams (Primary User):
+- Busy professional who relies on automation to reduce cognitive load.
+- Prefers concise outputs and minimal interaction.
+- Expects predictable ordering and automatic conflict handling.
+- Is frustrated by inconsistent behavior and having to manually check system correctness.
+
+Mo Rodriguez (Edge User):
+- User with accessibility needs and sensitivity to uncertainty.
+- Reviews outputs carefully and wants explanations for system decisions.
+- Needs deterministic behavior under ties/conflicts.
+- Wants edge cases handled explicitly and no silent failures.
+
+Constraints:
+C1: The system must preserve deterministic FIFO ordering for waitlist positions and promotions.
+C2: The system must automatically resolve full-capacity conflicts by waitlisting extra users and promoting the earliest waitlisted user when space becomes available.
+C3: The system must produce the same registered list, waitlist order, and promotion results for identical sequences of operations.
+C4: The system must apply a deterministic processing rule when rapid consecutive operations or ambiguous ordering conditions occur.
+C5: The system must return an understandable explanation when a registration is rejected, when a user is waitlisted, or when a user is promoted.
+C6: The system must explicitly acknowledge every request with a visible result instead of failing silently.
+C7: The system must explicitly handle edge cases such as capacity = 0, duplicate registration, cancellation of a missing user, re-registration after cancellation, and waitlist cancellation before promotion.
+C8: The system must return concise status results that let the user understand the outcome without unnecessary extra interaction.
+
+Acceptance Criteria:
+AC1: Given an event with capacity 2 and 2 users already registered, when a third user submits a registration request, then the system places that user on the waitlist instead of the registered list.
+AC2: Given an event with capacity 2, users A and B registered, and users C then D on the waitlist, when user A cancels, then user C is promoted to the registered list before user D.
+AC3: Given a user is already registered or already on the waitlist, when that same user submits another registration request, then the system rejects the duplicate request and returns an explicit outcome.
+AC4: Given a user is neither registered nor waitlisted, when that user submits a cancellation request, then the system returns an explicit not-found or failure outcome.
+AC5: Given the same initial state and the same sequence of registration and cancellation operations, when the system executes that sequence twice, then the final registered list and waitlist order are identical in both runs.
+AC6: Given a user requests their status, when the system processes the status query, then it returns exactly one valid state indicating whether the user is registered, waitlisted, or absent.
+AC7: Given the event capacity is 0, when a user submits a registration request, then the system does not register the user and handles the case explicitly according to system rules.
+AC8: Given a waitlisted user is promoted after a cancellation creates an open spot, when the promotion occurs, then the system updates the registration state so the promoted user appears in the registered list and no longer appears in the waitlist.
+AC9: Given a registration request is rejected, a user is placed on the waitlist, or a waitlisted user is promoted, when the system returns the result of that operation, then it includes a clear explanation of what happened and why.
+
+Please review this specification only. Do not generate code yet.
+Identify:
+1. missing constraints
+2. ambiguous requirements
+3. unhandled edge cases
+4. any conflicts between the personas and the current requirements
+
+Response summary:
+The review found several missing constraints and ambiguities, especially around deterministic ordering, simultaneous operations, unique user identity, atomic state updates, promotion visibility, status output format, re-registration behavior, and cancellation behavior. It also identified additional edge cases and a tension between Jane’s preference for concise outputs and Mo’s need for clear explanations.
+
+Decision:
+Accept with modifications
