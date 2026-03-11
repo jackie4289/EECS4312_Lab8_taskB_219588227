@@ -52,3 +52,1531 @@ The review found several missing constraints and ambiguities, especially around 
 
 Decision:
 Accept with modifications
+
+Prompt 2: Implement solution.py for the updated event registration system using the existing EventRegistration stub interface. Keep FIFO waitlist behavior, deterministic promotion, duplicate prevention, status queries, and snapshot support. Also preserve compatibility with the current tests while supporting concise explanation text for persona-based requirements.
+
+Response 2: I’m reading the solution_branch code and tests first so I can give you an implementation that fits the repo interface instead of inventing a new one.
+
+Thought for 1m 2s
+
+Paste this into solution.py. It matches the current stub interface on your solution_branch (EventRegistration, DuplicateRequest, NotFound, UserStatus, snapshot) and stays compatible with the existing Lab 8 tests while also supporting the newer persona-driven needs by carrying concise explanation text in UserStatus without breaking equality checks.
+
+"""
+Task B: Event Registration with Waitlist
+
+Implements a single-event registration system with:
+- fixed capacity
+- deterministic registration ordering
+- FIFO waitlist
+- automatic promotion on cancellation
+- duplicate prevention
+- status queries
+- deterministic snapshot output
+"""
+
+from dataclasses import dataclass, field
+from typing import List, Optional, Dict
+
+
+class DuplicateRequest(Exception):
+    """Raised if a user tries to register but is already registered or waitlisted."""
+    pass
+
+
+class NotFound(Exception):
+    """Raised if a user cannot be found for cancellation."""
+    pass
+
+
+@dataclass(frozen=True)
+class UserStatus:
+    """
+    state:
+      - "registered"
+      - "waitlisted"
+      - "none"
+
+    position:
+      1-based waitlist position if waitlisted; otherwise None
+
+    message:
+      Optional concise explanation. compare=False keeps old tests compatible.
+    """
+    state: str
+    position: Optional[int] = None
+    message: Optional[str] = field(default=None, compare=False)
+
+
+class EventRegistration:
+    """
+    Deterministic event registration with FIFO waitlist.
+    """
+
+    def __init__(self, capacity: int) -> None:
+        """
+        Args:
+            capacity: maximum number of registered users (>= 0)
+        """
+        if capacity < 0:
+            raise ValueError("capacity must be >= 0")
+
+        self.capacity: int = capacity
+        self._registered: List[str] = []
+        self._waitlist: List[str] = []
+
+    def _exists(self, user_id: str) -> bool:
+        return user_id in self._registered or user_id in self._waitlist
+
+    def _promote_if_possible(self) -> Optional[str]:
+        """
+        Promote the earliest waitlisted user if there is free capacity.
+        Returns the promoted user_id, or None if no promotion occurred.
+        """
+        if len(self._registered) < self.capacity and self._waitlist:
+            promoted = self._waitlist.pop(0)
+            self._registered.append(promoted)
+            return promoted
+        return None
+
+    def register(self, user_id: str) -> UserStatus:
+        """
+        Register a user:
+        - if capacity available -> registered
+        - else -> waitlisted (FIFO)
+
+        Raises:
+            DuplicateRequest if user already exists (registered or waitlisted)
+        """
+        if self._exists(user_id):
+            raise DuplicateRequest(f"user '{user_id}' is already registered or waitlisted")
+
+        if len(self._registered) < self.capacity:
+            self._registered.append(user_id)
+            return UserStatus(
+                state="registered",
+                message="Registered successfully."
+            )
+
+        self._waitlist.append(user_id)
+        position = len(self._waitlist)
+        return UserStatus(
+            state="waitlisted",
+            position=position,
+            message=f"Event is full. Added to waitlist at position {position}."
+        )
+
+    def cancel(self, user_id: str) -> UserStatus:
+        """
+        Cancel a user:
+        - if registered -> remove and promote earliest waitlisted user (if any)
+        - if waitlisted -> remove from waitlist and shift positions
+        - if not found -> raise NotFound
+
+        Returns:
+            UserStatus("none") for the canceled user, with a concise explanation.
+
+        Raises:
+            NotFound if the user is not registered or waitlisted
+        """
+        if user_id in self._registered:
+            self._registered.remove(user_id)
+            promoted = self._promote_if_possible()
+
+            if promoted is None:
+                return UserStatus(
+                    state="none",
+                    message="Registration canceled. No promotion occurred."
+                )
+
+            return UserStatus(
+                state="none",
+                message=(
+                    f"Registration canceled. Waitlisted user '{promoted}' "
+                    f"was promoted to registered."
+                )
+            )
+
+        if user_id in self._waitlist:
+            idx = self._waitlist.index(user_id)
+            self._waitlist.pop(idx)
+            return UserStatus(
+                state="none",
+                message="Waitlist entry canceled."
+            )
+
+        raise NotFound(f"user '{user_id}' was not found")
+
+    def status(self, user_id: str) -> UserStatus:
+        """
+        Return status of a user:
+        - registered
+        - waitlisted with position (1-based)
+        - none
+        """
+        if user_id in self._registered:
+            return UserStatus(
+                state="registered",
+                message="User is currently registered."
+            )
+
+        if user_id in self._waitlist:
+            position = self._waitlist.index(user_id) + 1
+            return UserStatus(
+                state="waitlisted",
+                position=position,
+                message=f"User is waitlisted at position {position}."
+            )
+
+        return UserStatus(
+            state="none",
+            message="User is not registered or waitlisted."
+        )
+
+    def snapshot(self) -> Dict[str, List[str]]:
+        """
+        Return a deterministic snapshot of internal state.
+        """
+        return {
+            "registered": list(self._registered),
+            "waitlist": list(self._waitlist),
+        }
+
+Decision: Accept with modifications
+
+---
+
+Prompt 3: ct_files> python -m pytest -v tests.py
+======================== test session starts =========================
+
+
+
+
+
+
+
+
+
+
+
+platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\DESKTOP-4GHPP\AppData\Local\Python\pythoncore-3.14-64\python.exe      
+cachedir: .pytest_cache
+rootdir: C:\Users\DESKTOP-4GHPP\Downloads\EECS4312_Lab8_taskB_219588227\project_files
+collected 22 items                                                     
+
+tests.py::test_register_until_capacity_then_waitlist_fifo_positions PASSED [  4%]
+tests.py::test_cancel_registered_promotes_earliest_waitlisted_fifo PASSED [  9%]
+tests.py::test_duplicate_register_raises_for_registered_and_waitlisted PASSED [ 13%]
+tests.py::test_waitlisted_cancel_removes_and_updates_positions PASSED [ 18%]
+tests.py::test_capacity_zero_all_waitlisted_and_promotion_never_happens
+ PASSED [ 22%]
+tests.py::test_status_for_registered_waitlisted_and_none PASSED [ 27%] 
+tests.py::test_reregister_after_cancellation PASSED             [ 31%] 
+tests.py::test_cancel_nonexistent_user_raises_notfound PASSED   [ 36%] 
+tests.py::test_multiple_promotions_after_multiple_cancellations PASSED [ 40%]
+tests.py::test_waitlist_positions_update_after_promotion PASSED [ 45%] 
+tests.py::test_snapshot_state_consistency PASSED                [ 50%] 
+tests.py::test_capacity_negative_raises_valueerror PASSED       [ 54%] 
+tests.py::test_capacity_non_int_raises_typeerror FAILED         [ 59%]
+tests.py::test_register_empty_or_whitespace_userid_raises_valueerror FAILED [ 63%]
+tests.py::test_register_non_string_userid_raises_typeerror FAILED [ 68%]
+tests.py::test_cancel_invalid_userid_raises FAILED              [ 72%]
+tests.py::test_status_invalid_userid_raises FAILED              [ 77%] 
+tests.py::test_user_ids_are_case_sensitive PASSED               [ 81%] 
+tests.py::test_deterministic_promotion_appends_to_end_of_registered PASSED [ 86%]
+tests.py::test_snapshot_returns_copies_not_live_lists PASSED    [ 90%] 
+tests.py::test_stress_repeated_cancel_and_reregister_cycles PASSED [ 95%]
+tests.py::test_stress_long_waitlist_middle_removals_and_fifo_promotions
+ PASSED [100%]
+
+============================== FAILURES ============================== 
+_______________ test_capacity_non_int_raises_typeerror _______________ 
+
+    def test_capacity_non_int_raises_typeerror():
+        # Validates Clarification: capacity must be an int (bool disallowed too)
+        with pytest.raises(TypeError):
+            EventRegistration(capacity="2")
+>       with pytest.raises(TypeError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'TypeError'>
+
+tests.py:178: Failed
+_____ test_register_empty_or_whitespace_userid_raises_valueerror _____ 
+
+    def test_register_empty_or_whitespace_userid_raises_valueerror():  
+        # Validates Clarification: user_id must be non-empty after stripping whitespace
+        er = EventRegistration(capacity=1)
+
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests.py:188: Failed
+__________ test_register_non_string_userid_raises_typeerror __________ 
+
+    def test_register_non_string_userid_raises_typeerror():
+        # Validates Clarification: user_id must be a string
+        er = EventRegistration(capacity=1)
+
+>       with pytest.raises(TypeError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'TypeError'>
+
+tests.py:200: Failed
+_________________ test_cancel_invalid_userid_raises __________________ 
+
+    def test_cancel_invalid_userid_raises():
+        # Validates Clarification: cancel validates user_id format before NotFound logic
+        er = EventRegistration(capacity=1)
+
+        with pytest.raises(ValueError):
+>           er.cancel("")
+
+tests.py:213:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _  
+
+self = <solution.EventRegistration object at 0x000002B06DA6AE10>       
+user_id = ''
+
+    def cancel(self, user_id: str) -> UserStatus:
+        """
+        Cancel a user:
+        - if registered -> remove and promote earliest waitlisted user (if any)
+        - if waitlisted -> remove from waitlist and shift positions    
+        - if not found -> raise NotFound
+
+        Returns:
+            UserStatus("none") for the canceled user, with a concise explanation.
+
+        Raises:
+            NotFound if the user is not registered or waitlisted       
+        """
+        if user_id in self._registered:
+            self._registered.remove(user_id)
+            promoted = self._promote_if_possible()
+
+            if promoted is None:
+                return UserStatus(
+                    state="none",
+                    message="Registration canceled. No promotion occurred."
+                )
+
+            return UserStatus(
+                state="none",
+                message=(
+                    f"Registration canceled. Waitlisted user '{promoted}' "
+                    f"was promoted to registered."
+                )
+            )
+
+        if user_id in self._waitlist:
+            idx = self._waitlist.index(user_id)
+            self._waitlist.pop(idx)
+            return UserStatus(
+                state="none",
+                message="Waitlist entry canceled."
+            )
+
+>       raise NotFound(f"user '{user_id}' was not found")
+E       solution.NotFound: user '' was not found
+
+solution.py:147: NotFound
+_________________ test_status_invalid_userid_raises __________________ 
+
+    def test_status_invalid_userid_raises():
+        # Validates Clarification: status validates user_id format     
+        er = EventRegistration(capacity=1)
+
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests.py:224: Failed
+====================== short test summary info ======================= 
+FAILED tests.py::test_capacity_non_int_raises_typeerror - Failed: DID NOT RAISE <class 'TypeError'>
+FAILED tests.py::test_register_empty_or_whitespace_userid_raises_valueerror - Failed: DID NOT RAISE <class 'ValueError'>
+FAILED tests.py::test_register_non_string_userid_raises_typeerror - Failed: DID NOT RAISE <class 'TypeError'>
+FAILED tests.py::test_cancel_invalid_userid_raises - solution.NotFound: user '' was not found
+FAILED tests.py::test_status_invalid_userid_raises - Failed: DID NOT RAISE <class 'ValueError'>
+==================== 5 failed, 17 passed in 0.19s ====================
+
+Response 3: Good news: **17 passed, 5 failed**, and all 5 failures are the same kind of issue — **input validation**.
+
+You need to update `solution.py` in 4 places.
+
+## What’s failing
+
+Your tests expect:
+
+1. `capacity="2"` or `capacity=True` → **TypeError**
+2. `user_id=""` or `"   "` → **ValueError**
+3. `user_id=123` → **TypeError**
+4. `cancel("")` and `status("")` should fail on **validation first**, not with `NotFound`
+
+## What to change
+
+### 1) Fix `__init__`
+
+Replace your current `__init__` check with this:
+
+```python
+def __init__(self, capacity: int) -> None:
+    if not isinstance(capacity, int) or isinstance(capacity, bool):
+        raise TypeError("capacity must be an int")
+    if capacity < 0:
+        raise ValueError("capacity must be >= 0")
+
+    self.capacity: int = capacity
+    self._registered: List[str] = []
+    self._waitlist: List[str] = []
+```
+
+Why: in Python, `bool` is a subclass of `int`, so `True` must be rejected explicitly.
+
+---
+
+### 2) Add a helper to validate `user_id`
+
+Put this inside `EventRegistration`:
+
+```python
+def _validate_user_id(self, user_id: str) -> None:
+    if not isinstance(user_id, str):
+        raise TypeError("user_id must be a string")
+    if user_id.strip() == "":
+        raise ValueError("user_id must be non-empty")
+```
+
+---
+
+### 3) Call validation at the start of `register`
+
+Change the start of `register()` to:
+
+```python
+def register(self, user_id: str) -> UserStatus:
+    self._validate_user_id(user_id)
+
+    if self._exists(user_id):
+        raise DuplicateRequest(f"user '{user_id}' is already registered or waitlisted")
+
+    if len(self._registered) < self.capacity:
+        self._registered.append(user_id)
+        return UserStatus(
+            state="registered",
+            message="Registered successfully."
+        )
+
+    self._waitlist.append(user_id)
+    position = len(self._waitlist)
+    return UserStatus(
+        state="waitlisted",
+        position=position,
+        message=f"Event is full. Added to waitlist at position {position}."
+    )
+```
+
+---
+
+### 4) Call validation at the start of `cancel` and `status`
+
+At the top of both methods, add:
+
+```python
+self._validate_user_id(user_id)
+```
+
+So the start of `cancel()` becomes:
+
+```python
+def cancel(self, user_id: str) -> UserStatus:
+    self._validate_user_id(user_id)
+
+    if user_id in self._registered:
+        ...
+```
+
+And `status()` becomes:
+
+```python
+def status(self, user_id: str) -> UserStatus:
+    self._validate_user_id(user_id)
+
+    if user_id in self._registered:
+        ...
+```
+
+---
+
+## Then run again
+
+```powershell
+python -m pytest -v tests.py
+```
+
+## Expected result
+
+Those 5 failing tests should pass:
+
+* `test_capacity_non_int_raises_typeerror`
+* `test_register_empty_or_whitespace_userid_raises_valueerror`
+* `test_register_non_string_userid_raises_typeerror`
+* `test_cancel_invalid_userid_raises`
+* `test_status_invalid_userid_raises`
+
+If you want, here is the full patch in one block:
+
+```python
+def __init__(self, capacity: int) -> None:
+    if not isinstance(capacity, int) or isinstance(capacity, bool):
+        raise TypeError("capacity must be an int")
+    if capacity < 0:
+        raise ValueError("capacity must be >= 0")
+
+    self.capacity: int = capacity
+    self._registered: List[str] = []
+    self._waitlist: List[str] = []
+
+def _validate_user_id(self, user_id: str) -> None:
+    if not isinstance(user_id, str):
+        raise TypeError("user_id must be a string")
+    if user_id.strip() == "":
+        raise ValueError("user_id must be non-empty")
+
+def register(self, user_id: str) -> UserStatus:
+    self._validate_user_id(user_id)
+
+    if self._exists(user_id):
+        raise DuplicateRequest(f"user '{user_id}' is already registered or waitlisted")
+
+    if len(self._registered) < self.capacity:
+        self._registered.append(user_id)
+        return UserStatus(state="registered", message="Registered successfully.")
+
+    self._waitlist.append(user_id)
+    position = len(self._waitlist)
+    return UserStatus(
+        state="waitlisted",
+        position=position,
+        message=f"Event is full. Added to waitlist at position {position}."
+    )
+
+def cancel(self, user_id: str) -> UserStatus:
+    self._validate_user_id(user_id)
+
+    if user_id in self._registered:
+        self._registered.remove(user_id)
+        promoted = self._promote_if_possible()
+
+        if promoted is None:
+            return UserStatus(
+                state="none",
+                message="Registration canceled. No promotion occurred."
+            )
+
+        return UserStatus(
+            state="none",
+            message=f"Registration canceled. Waitlisted user '{promoted}' was promoted to registered."
+        )
+
+    if user_id in self._waitlist:
+        idx = self._waitlist.index(user_id)
+        self._waitlist.pop(idx)
+        return UserStatus(state="none", message="Waitlist entry canceled.")
+
+    raise NotFound(f"user '{user_id}' was not found")
+
+def status(self, user_id: str) -> UserStatus:
+    self._validate_user_id(user_id)
+
+    if user_id in self._registered:
+        return UserStatus(state="registered", message="User is currently registered.")
+
+    if user_id in self._waitlist:
+        position = self._waitlist.index(user_id) + 1
+        return UserStatus(
+            state="waitlisted",
+            position=position,
+            message=f"User is waitlisted at position {position}."
+        )
+
+    return UserStatus(state="none", message="User is not registered or waitlisted.")
+```
+
+Run the tests again and paste the new output.
+
+
+Decision: Accepted modifications
+
+Prompt 4: Create tests.py for the updated event registration system. Include at least five executable tests, at least two edge-case tests, and add a short traceability comment above each test showing which constraint and acceptance criterion it covers.
+
+Response 4: I’m turning your accepted constraints and acceptance criteria into a tests.py suite with traceability comments and enough edge-case coverage to satisfy Task 8.
+
+Thought for 27s
+
+Paste this into tests.py.
+
+import pytest
+
+from solution import EventRegistration, DuplicateRequest, NotFound, UserStatus
+
+
+# Covers C2, C9, AC1
+def test_full_capacity_registration_adds_user_to_waitlist_with_position():
+    er = EventRegistration(capacity=2)
+
+    assert er.register("A") == UserStatus("registered")
+    assert er.register("B") == UserStatus("registered")
+
+    status = er.register("C")
+    assert status == UserStatus("waitlisted", 1)
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["A", "B"]
+    assert snap["waitlist"] == ["C"]
+
+
+# Covers C1, C2, C5, AC2, AC8
+def test_cancellation_promotes_earliest_waitlisted_user_fifo():
+    er = EventRegistration(capacity=2)
+
+    er.register("A")
+    er.register("B")
+    er.register("C")
+    er.register("D")
+
+    result = er.cancel("A")
+    assert result.state == "none"
+    assert "promoted" in (result.message or "").lower()
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["B", "C"]
+    assert snap["waitlist"] == ["D"]
+
+
+# Covers C6, C7, AC3
+def test_duplicate_registration_is_rejected_for_registered_and_waitlisted_users():
+    er = EventRegistration(capacity=1)
+
+    er.register("A")
+    er.register("B")  # waitlisted
+
+    with pytest.raises(DuplicateRequest):
+        er.register("A")
+
+    with pytest.raises(DuplicateRequest):
+        er.register("B")
+
+
+# Covers C6, C7, AC4
+def test_cancelling_unknown_user_returns_not_found():
+    er = EventRegistration(capacity=1)
+
+    with pytest.raises(NotFound):
+        er.cancel("missing-user")
+
+
+# Covers C3, C4, AC5
+def test_repeating_same_operation_sequence_produces_same_final_state():
+    er1 = EventRegistration(capacity=2)
+    er2 = EventRegistration(capacity=2)
+
+    ops = [
+        ("register", "A"),
+        ("register", "B"),
+        ("register", "C"),
+        ("register", "D"),
+        ("cancel", "A"),
+        ("cancel", "D"),
+    ]
+
+    for op, user in ops:
+        getattr(er1, op)(user)
+        getattr(er2, op)(user)
+
+    assert er1.snapshot() == er2.snapshot()
+
+
+# Covers C8, C9, AC6
+def test_waitlisted_status_returns_state_and_position():
+    er = EventRegistration(capacity=1)
+
+    er.register("A")
+    er.register("B")
+    er.register("C")
+
+    assert er.status("B") == UserStatus("waitlisted", 1)
+    assert er.status("C") == UserStatus("waitlisted", 2)
+
+
+# Covers C7, AC7
+def test_capacity_zero_never_registers_users_edge_case():
+    er = EventRegistration(capacity=0)
+
+    status = er.register("A")
+    assert status == UserStatus("waitlisted", 1)
+
+    snap = er.snapshot()
+    assert snap["registered"] == []
+    assert snap["waitlist"] == ["A"]
+
+
+# Covers C2, C10, AC11
+def test_registered_cancellation_with_empty_waitlist_removes_user_without_promotion_edge_case():
+    er = EventRegistration(capacity=2)
+
+    er.register("A")
+    result = er.cancel("A")
+
+    assert result.state == "none"
+    assert "no promotion" in (result.message or "").lower()
+
+    snap = er.snapshot()
+    assert snap["registered"] == []
+    assert snap["waitlist"] == []
+
+
+# Covers C7, AC12
+def test_waitlisted_cancellation_removes_user_and_shifts_positions_edge_case():
+    er = EventRegistration(capacity=1)
+
+    er.register("A")
+    er.register("B")
+    er.register("C")
+    er.register("D")
+
+    result = er.cancel("C")
+    assert result.state == "none"
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["A"]
+    assert snap["waitlist"] == ["B", "D"]
+
+    assert er.status("B") == UserStatus("waitlisted", 1)
+    assert er.status("D") == UserStatus("waitlisted", 2)
+
+
+# Covers C4, AC10
+def test_operations_follow_deterministic_request_order():
+    er = EventRegistration(capacity=1)
+
+    er.register("A")
+    er.register("B")      # waitlisted
+    er.cancel("A")        # promotes B
+    er.register("C")      # now waitlisted behind B
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["B"]
+    assert snap["waitlist"] == ["C"]
+
+
+# Covers C10, AC2, AC8
+def test_multiple_cancellations_trigger_multiple_fifo_promotions():
+    er = EventRegistration(capacity=2)
+
+    er.register("A")
+    er.register("B")
+    er.register("C")
+    er.register("D")
+    er.register("E")
+
+    er.cancel("A")
+    er.cancel("B")
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["C", "D"]
+    assert snap["waitlist"] == ["E"]
+
+Run it with:
+
+python -m pytest -v tests.py
+
+Decision: Accept
+
+Prompt 5: are these tests enough to cover everything in the requirements as well as timing and edge cases? import pytest
+import pytest
+
+from solution import EventRegistration, UserStatus, DuplicateRequest, NotFound
+
+
+def test_register_until_capacity_then_waitlist_fifo_positions():
+    er = EventRegistration(capacity=2)
+
+    s1 = er.register("u1")
+    s2 = er.register("u2")
+    s3 = er.register("u3")
+    s4 = er.register("u4")
+
+    assert s1 == UserStatus("registered")
+    assert s2 == UserStatus("registered")
+    assert s3 == UserStatus("waitlisted", 1)
+    assert s4 == UserStatus("waitlisted", 2)
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["u1", "u2"]
+    assert snap["waitlist"] == ["u3", "u4"]
+
+
+def test_cancel_registered_promotes_earliest_waitlisted_fifo():
+    er = EventRegistration(capacity=1)
+    er.register("u1")
+    er.register("u2")  # waitlist
+    er.register("u3")  # waitlist
+
+    er.cancel("u1")  # should promote u2
+
+    assert er.status("u1") == UserStatus("none")
+    assert er.status("u2") == UserStatus("registered")
+    assert er.status("u3") == UserStatus("waitlisted", 1)
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["u2"]
+    assert snap["waitlist"] == ["u3"]
+
+
+def test_duplicate_register_raises_for_registered_and_waitlisted():
+    er = EventRegistration(capacity=1)
+    er.register("u1")
+    with pytest.raises(DuplicateRequest):
+        er.register("u1")
+
+    er.register("u2")  # waitlisted
+    with pytest.raises(DuplicateRequest):
+        er.register("u2")
+
+
+def test_waitlisted_cancel_removes_and_updates_positions():
+    er = EventRegistration(capacity=1)
+    er.register("u1")
+    er.register("u2")  # waitlist pos1
+    er.register("u3")  # waitlist pos2
+
+    er.cancel("u2")    # remove from waitlist
+
+    assert er.status("u2") == UserStatus("none")
+    assert er.status("u3") == UserStatus("waitlisted", 1)
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["u1"]
+    assert snap["waitlist"] == ["u3"]
+
+
+def test_capacity_zero_all_waitlisted_and_promotion_never_happens():
+    er = EventRegistration(capacity=0)
+    assert er.register("u1") == UserStatus("waitlisted", 1)
+    assert er.register("u2") == UserStatus("waitlisted", 2)
+
+    # No one can ever be registered when capacity=0
+    assert er.status("u1") == UserStatus("waitlisted", 1)
+    assert er.status("u2") == UserStatus("waitlisted", 2)
+    assert er.snapshot()["registered"] == []
+
+    # Cancel unknown should raise NotFound
+    with pytest.raises(NotFound):
+        er.cancel("missing")
+
+
+
+#################################################################################
+# Add your own additional tests here to cover more cases and edge cases as needed.
+#################################################################################
+
+def test_status_for_registered_waitlisted_and_none():
+    # Validates C3: user exists in only one state
+    er = EventRegistration(capacity=2)
+
+    er.register("u1")
+    er.register("u2")
+    er.register("u3")
+
+    assert er.status("u1") == UserStatus("registered")
+    assert er.status("u3") == UserStatus("waitlisted", 1)
+    assert er.status("unknown") == UserStatus("none")
+
+
+def test_reregister_after_cancellation():
+    # Validates re-registration behavior
+    er = EventRegistration(capacity=1)
+
+    er.register("u1")
+    er.cancel("u1")
+
+    # user should be able to register again
+    s = er.register("u1")
+    assert s == UserStatus("registered")
+
+
+def test_cancel_nonexistent_user_raises_notfound():
+    # Validates C3: operations on unknown users
+    er = EventRegistration(capacity=1)
+
+    with pytest.raises(NotFound):
+        er.cancel("missing_user")
+
+
+def test_multiple_promotions_after_multiple_cancellations():
+    # Validates C5 and C6: FIFO promotion order
+    er = EventRegistration(capacity=2)
+
+    er.register("u1")
+    er.register("u2")
+    er.register("u3")
+    er.register("u4")
+
+    er.cancel("u1")  # promotes u3
+    er.cancel("u2")  # promotes u4
+
+    assert er.status("u3") == UserStatus("registered")
+    assert er.status("u4") == UserStatus("registered")
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["u3", "u4"]
+    assert snap["waitlist"] == []
+
+
+def test_waitlist_positions_update_after_promotion():
+    # Validates waitlist position updates
+    er = EventRegistration(capacity=1)
+
+    er.register("u1")
+    er.register("u2")
+    er.register("u3")
+
+    er.cancel("u1")  # promote u2
+
+    assert er.status("u2") == UserStatus("registered")
+    assert er.status("u3") == UserStatus("waitlisted", 1)
+
+
+def test_snapshot_state_consistency():
+    # Validates invariant: system state remains consistent
+    er = EventRegistration(capacity=2)
+
+    er.register("u1")
+    er.register("u2")
+    er.register("u3")
+
+    snap = er.snapshot()
+
+    assert snap["registered"] == ["u1", "u2"]
+    assert snap["waitlist"] == ["u3"]
+
+def test_capacity_negative_raises_valueerror():
+    # Validates Clarification: capacity must be int >= 0
+    with pytest.raises(ValueError):
+        EventRegistration(capacity=-1)
+
+
+def test_capacity_non_int_raises_typeerror():
+    # Validates Clarification: capacity must be an int (bool disallowed too)
+    with pytest.raises(TypeError):
+        EventRegistration(capacity="2")
+    with pytest.raises(TypeError):
+        EventRegistration(capacity=2.0)
+    with pytest.raises(TypeError):
+        EventRegistration(capacity=True)  # bool is a subclass of int
+
+
+def test_register_empty_or_whitespace_userid_raises_valueerror():
+    # Validates Clarification: user_id must be non-empty after stripping whitespace
+    er = EventRegistration(capacity=1)
+
+    with pytest.raises(ValueError):
+        er.register("")
+    with pytest.raises(ValueError):
+        er.register("   ")
+    with pytest.raises(ValueError):
+        er.register("\n\t")
+
+
+def test_register_non_string_userid_raises_typeerror():
+    # Validates Clarification: user_id must be a string
+    er = EventRegistration(capacity=1)
+
+    with pytest.raises(TypeError):
+        er.register(123)          # int
+    with pytest.raises(TypeError):
+        er.register(None)         # NoneType
+    with pytest.raises(TypeError):
+        er.register(["u1"])       # list
+
+
+def test_cancel_invalid_userid_raises():
+    # Validates Clarification: cancel validates user_id format before NotFound logic
+    er = EventRegistration(capacity=1)
+
+    with pytest.raises(ValueError):
+        er.cancel("")
+    with pytest.raises(ValueError):
+        er.cancel("   ")
+    with pytest.raises(TypeError):
+        er.cancel(None)
+
+
+def test_status_invalid_userid_raises():
+    # Validates Clarification: status validates user_id format
+    er = EventRegistration(capacity=1)
+
+    with pytest.raises(ValueError):
+        er.status("")
+    with pytest.raises(ValueError):
+        er.status("   ")
+    with pytest.raises(TypeError):
+        er.status(999)
+
+
+def test_user_ids_are_case_sensitive():
+    # Validates Clarification: user IDs are case-sensitive (Alice != alice)
+    er = EventRegistration(capacity=2)
+
+    s1 = er.register("Alice")
+    s2 = er.register("alice")
+
+    assert s1 == UserStatus("registered")
+    assert s2 == UserStatus("registered")
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["Alice", "alice"]
+
+
+def test_deterministic_promotion_appends_to_end_of_registered():
+    # Validates Clarification: registered list preserves order; promotion appends at end
+    er = EventRegistration(capacity=2)
+
+    er.register("u1")
+    er.register("u2")
+    er.register("u3")  # waitlisted
+
+    er.cancel("u1")    # u3 promoted
+
+    snap = er.snapshot()
+    # u2 remains first; u3 appended
+    assert snap["registered"] == ["u2", "u3"]
+    assert snap["waitlist"] == []
+
+
+def test_snapshot_returns_copies_not_live_lists():
+    # Validates Clarification: snapshot() returns copies (external mutation shouldn't affect state)
+    er = EventRegistration(capacity=1)
+    er.register("u1")
+    er.register("u2")  # waitlisted
+
+    snap = er.snapshot()
+    snap["registered"].append("MUTATE")
+    snap["waitlist"].clear()
+
+    # Internal state should be unchanged
+    snap2 = er.snapshot()
+    assert snap2["registered"] == ["u1"]
+    assert snap2["waitlist"] == ["u2"]
+    
+def test_stress_repeated_cancel_and_reregister_cycles():
+    # Validates: consistent state after many operations, re-register allowed after cancel,
+    # no duplicates, deterministic promotion behavior.
+    er = EventRegistration(capacity=2)
+
+    # Fill capacity + waitlist
+    er.register("u1")
+    er.register("u2")
+    er.register("u3")
+    er.register("u4")
+
+    # Cycle: cancel a registered user, ensure FIFO promotion, then re-register canceled user
+    er.cancel("u1")  # promotes u3
+    assert er.snapshot()["registered"] == ["u2", "u3"]
+    assert er.snapshot()["waitlist"] == ["u4"]
+
+    er.register("u1")  # should go to waitlist (since capacity full)
+    assert er.status("u1") == UserStatus("waitlisted", 2)
+    assert er.snapshot()["waitlist"] == ["u4", "u1"]
+
+    er.cancel("u2")  # promotes u4
+    assert er.snapshot()["registered"] == ["u3", "u4"]
+    assert er.snapshot()["waitlist"] == ["u1"]
+    assert er.status("u2") == UserStatus("none")
+
+    # Now re-register u2; should go to waitlist (capacity full)
+    er.register("u2")
+    assert er.snapshot()["waitlist"] == ["u1", "u2"]
+
+    # Cancel u3 -> promote u1
+    er.cancel("u3")
+    assert er.snapshot()["registered"] == ["u4", "u1"]
+    assert er.snapshot()["waitlist"] == ["u2"]
+
+    # Cancel u4 -> promote u2
+    er.cancel("u4")
+    assert er.snapshot()["registered"] == ["u1", "u2"]
+    assert er.snapshot()["waitlist"] == []
+
+    # Ensure no duplicates and status consistent at end
+    assert er.status("u1") == UserStatus("registered")
+    assert er.status("u2") == UserStatus("registered")
+    assert er.status("u3") == UserStatus("none")
+    assert er.status("u4") == UserStatus("none")
+
+
+def test_stress_long_waitlist_middle_removals_and_fifo_promotions():
+    # Validates: FIFO ordering under churn + correct position updates after removals/promotions
+    er = EventRegistration(capacity=3)
+
+    # Register 3, then waitlist 6
+    er.register("r1")
+    er.register("r2")
+    er.register("r3")
+
+    er.register("w1")
+    er.register("w2")
+    er.register("w3")
+    er.register("w4")
+    er.register("w5")
+    er.register("w6")
+
+    assert er.snapshot()["registered"] == ["r1", "r2", "r3"]
+    assert er.snapshot()["waitlist"] == ["w1", "w2", "w3", "w4", "w5", "w6"]
+
+    # Remove from middle of waitlist
+    er.cancel("w3")
+    assert er.snapshot()["waitlist"] == ["w1", "w2", "w4", "w5", "w6"]
+    assert er.status("w4") == UserStatus("waitlisted", 3)
+
+    # Cancel a registered user -> promote w1 (FIFO)
+    er.cancel("r2")
+    assert er.snapshot()["registered"] == ["r1", "r3", "w1"]
+    assert er.snapshot()["waitlist"] == ["w2", "w4", "w5", "w6"]
+
+    # Cancel another registered user -> promote w2
+    er.cancel("r1")
+    assert er.snapshot()["registered"] == ["r3", "w1", "w2"]
+    assert er.snapshot()["waitlist"] == ["w4", "w5", "w6"]
+
+    # Remove head of waitlist (w4) then cancel registered to promote next (w5)
+    er.cancel("w4")
+    assert er.snapshot()["waitlist"] == ["w5", "w6"]
+    assert er.status("w5") == UserStatus("waitlisted", 1)
+
+    er.cancel("r3")  # promote w5
+    assert er.snapshot()["registered"] == ["w1", "w2", "w5"]
+    assert er.snapshot()["waitlist"] == ["w6"]
+    assert er.status("w6") == UserStatus("waitlisted", 1)
+
+    # Final sanity: no removed users remain
+    assert er.status("r1") == UserStatus("none")
+    assert er.status("r2") == UserStatus("none")
+    assert er.status("w3") == UserStatus("none")
+    assert er.status("w4") == UserStatus("none")
+
+def test_full_capacity_registration_adds_user_to_waitlist_with_position():
+    er = EventRegistration(capacity=2)
+
+    assert er.register("A") == UserStatus("registered")
+    assert er.register("B") == UserStatus("registered")
+
+    status = er.register("C")
+    assert status == UserStatus("waitlisted", 1)
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["A", "B"]
+    assert snap["waitlist"] == ["C"]
+
+
+# Covers C1, C2, C5, AC2, AC8
+def test_cancellation_promotes_earliest_waitlisted_user_fifo():
+    er = EventRegistration(capacity=2)
+
+    er.register("A")
+    er.register("B")
+    er.register("C")
+    er.register("D")
+
+    result = er.cancel("A")
+    assert result.state == "none"
+    assert "promoted" in (result.message or "").lower()
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["B", "C"]
+    assert snap["waitlist"] == ["D"]
+
+
+# Covers C6, C7, AC3
+def test_duplicate_registration_is_rejected_for_registered_and_waitlisted_users():
+    er = EventRegistration(capacity=1)
+
+    er.register("A")
+    er.register("B")  # waitlisted
+
+    with pytest.raises(DuplicateRequest):
+        er.register("A")
+
+    with pytest.raises(DuplicateRequest):
+        er.register("B")
+
+
+# Covers C6, C7, AC4
+def test_cancelling_unknown_user_returns_not_found():
+    er = EventRegistration(capacity=1)
+
+    with pytest.raises(NotFound):
+        er.cancel("missing-user")
+
+
+# Covers C3, C4, AC5
+def test_repeating_same_operation_sequence_produces_same_final_state():
+    er1 = EventRegistration(capacity=2)
+    er2 = EventRegistration(capacity=2)
+
+    ops = [
+        ("register", "A"),
+        ("register", "B"),
+        ("register", "C"),
+        ("register", "D"),
+        ("cancel", "A"),
+        ("cancel", "D"),
+    ]
+
+    for op, user in ops:
+        getattr(er1, op)(user)
+        getattr(er2, op)(user)
+
+    assert er1.snapshot() == er2.snapshot()
+
+
+# Covers C8, C9, AC6
+def test_waitlisted_status_returns_state_and_position():
+    er = EventRegistration(capacity=1)
+
+    er.register("A")
+    er.register("B")
+    er.register("C")
+
+    assert er.status("B") == UserStatus("waitlisted", 1)
+    assert er.status("C") == UserStatus("waitlisted", 2)
+
+
+# Covers C7, AC7
+def test_capacity_zero_never_registers_users_edge_case():
+    er = EventRegistration(capacity=0)
+
+    status = er.register("A")
+    assert status == UserStatus("waitlisted", 1)
+
+    snap = er.snapshot()
+    assert snap["registered"] == []
+    assert snap["waitlist"] == ["A"]
+
+
+# Covers C2, C10, AC11
+def test_registered_cancellation_with_empty_waitlist_removes_user_without_promotion_edge_case():
+    er = EventRegistration(capacity=2)
+
+    er.register("A")
+    result = er.cancel("A")
+
+    assert result.state == "none"
+    assert "no promotion" in (result.message or "").lower()
+
+    snap = er.snapshot()
+    assert snap["registered"] == []
+    assert snap["waitlist"] == []
+
+
+# Covers C7, AC12
+def test_waitlisted_cancellation_removes_user_and_shifts_positions_edge_case():
+    er = EventRegistration(capacity=1)
+
+    er.register("A")
+    er.register("B")
+    er.register("C")
+    er.register("D")
+
+    result = er.cancel("C")
+    assert result.state == "none"
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["A"]
+    assert snap["waitlist"] == ["B", "D"]
+
+    assert er.status("B") == UserStatus("waitlisted", 1)
+    assert er.status("D") == UserStatus("waitlisted", 2)
+
+
+# Covers C4, AC10
+def test_operations_follow_deterministic_request_order():
+    er = EventRegistration(capacity=1)
+
+    er.register("A")
+    er.register("B")      # waitlisted
+    er.cancel("A")        # promotes B
+    er.register("C")      # now waitlisted behind B
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["B"]
+    assert snap["waitlist"] == ["C"]
+
+
+# Covers C10, AC2, AC8
+def test_multiple_cancellations_trigger_multiple_fifo_promotions():
+    er = EventRegistration(capacity=2)
+
+    er.register("A")
+    er.register("B")
+    er.register("C")
+    er.register("D")
+    er.register("E")
+
+    er.cancel("A")
+    er.cancel("B")
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["C", "D"]
+    assert snap["waitlist"] == ["E"]
+
+    Response 5: are these tests enough to cover everything in the requirements as well as timing and edge cases? import pytest
+import pytest
+
+from solution import EventRegistration, UserStatus, DuplicateRequest, NotFound
+
+
+# Covers C1, C2, C9, AC1
+def test_register_until_capacity_then_waitlist_fifo_positions():
+    er = EventRegistration(capacity=2)
+
+    s1 = er.register("u1")
+    s2 = er.register("u2")
+    s3 = er.register("u3")
+    s4 = er.register("u4")
+
+    assert s1 == UserStatus("registered")
+    assert s2 == UserStatus("registered")
+    assert s3 == UserStatus("waitlisted", 1)
+    assert s4 == UserStatus("waitlisted", 2)
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["u1", "u2"]
+    assert snap["waitlist"] == ["u3", "u4"]
+
+
+# Covers C1, C2, C5, AC2, AC8
+def test_cancel_registered_promotes_earliest_waitlisted_fifo():
+    er = EventRegistration(capacity=1)
+    er.register("u1")
+    er.register("u2")  # waitlist
+    er.register("u3")  # waitlist
+
+    result = er.cancel("u1")  # should promote u2
+
+    assert result.state == "none"
+    assert "promoted" in (result.message or "").lower()
+    assert er.status("u1") == UserStatus("none")
+    assert er.status("u2") == UserStatus("registered")
+    assert er.status("u3") == UserStatus("waitlisted", 1)
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["u2"]
+    assert snap["waitlist"] == ["u3"]
+
+
+# Covers C6, C7, AC3
+def test_duplicate_register_raises_for_registered_and_waitlisted():
+    er = EventRegistration(capacity=1)
+    er.register("u1")
+    with pytest.raises(DuplicateRequest):
+        er.register("u1")
+
+    er.register("u2")  # waitlisted
+    with pytest.raises(DuplicateRequest):
+        er.register("u2")
+
+
+# Covers C7, AC12
+def test_waitlisted_cancel_removes_and_updates_positions():
+    er = EventRegistration(capacity=1)
+    er.register("u1")
+    er.register("u2")  # waitlist pos1
+    er.register("u3")  # waitlist pos2
+
+    result = er.cancel("u2")  # remove from waitlist
+
+    assert result == UserStatus("none")
+    assert er.status("u2") == UserStatus("none")
+    assert er.status("u3") == UserStatus("waitlisted", 1)
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["u1"]
+    assert snap["waitlist"] == ["u3"]
+
+
+# Covers C7, AC7
+def test_capacity_zero_all_waitlisted_and_promotion_never_happens():
+    er = EventRegistration(capacity=0)
+    assert er.register("u1") == UserStatus("waitlisted", 1)
+    assert er.register("u2") == UserStatus("waitlisted", 2)
+
+    # No one can ever be registered when capacity=0
+    assert er.status("u1") == UserStatus("waitlisted", 1)
+    assert er.status("u2") == UserStatus("waitlisted", 2)
+    assert er.snapshot()["registered"] == []
+
+    # Cancel unknown should raise NotFound
+    with pytest.raises(NotFound):
+        er.cancel("missing")
+
+
+#################################################################################
+# Additional tests to cover remaining acceptance criteria and edge cases.
+#################################################################################
+
+
+# Covers C8, C9, AC6
+def test_status_for_registered_waitlisted_and_none():
+    er = EventRegistration(capacity=2)
+
+    er.register("u1")
+    er.register("u2")
+    er.register("u3")
+
+    assert er.status("u1") == UserStatus("registered")
+    assert er.status("u3") == UserStatus("waitlisted", 1)
+    assert er.status("unknown") == UserStatus("none")
+
+
+# Covers C6, AC4
+def test_cancel_nonexistent_user_raises_notfound():
+    er = EventRegistration(capacity=1)
+
+    with pytest.raises(NotFound):
+        er.cancel("missing_user")
+
+
+# Covers C3, C4, AC5
+def test_repeating_same_operation_sequence_produces_same_final_state():
+    er1 = EventRegistration(capacity=2)
+    er2 = EventRegistration(capacity=2)
+
+    ops = [
+        ("register", "u1"),
+        ("register", "u2"),
+        ("register", "u3"),
+        ("register", "u4"),
+        ("cancel", "u1"),
+        ("cancel", "u4"),
+    ]
+
+    for op, user in ops:
+        getattr(er1, op)(user)
+        getattr(er2, op)(user)
+
+    assert er1.snapshot() == er2.snapshot()
+
+
+# Covers C2, C10, AC11
+def test_registered_cancellation_with_empty_waitlist_removes_user_without_promotion():
+    er = EventRegistration(capacity=2)
+
+    er.register("u1")
+    result = er.cancel("u1")
+
+    assert result.state == "none"
+    assert "no promotion" in (result.message or "").lower()
+
+    snap = er.snapshot()
+    assert snap["registered"] == []
+    assert snap["waitlist"] == []
+
+
+# Covers C4, AC10
+def test_operations_follow_deterministic_request_order():
+    er = EventRegistration(capacity=1)
+
+    er.register("u1")
+    er.register("u2")      # waitlisted
+    er.cancel("u1")        # promotes u2
+    er.register("u3")      # now waitlisted behind u2
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["u2"]
+    assert snap["waitlist"] == ["u3"]
+
+
+# Covers C5, AC9
+def test_waitlist_result_includes_explanation():
+    er = EventRegistration(capacity=1)
+
+    er.register("u1")
+    result = er.register("u2")
+
+    assert result == UserStatus("waitlisted", 1)
+    assert result.message is not None
+    assert "waitlist" in result.message.lower()
+
+
+# Covers C5, AC9
+def test_registered_result_includes_explanation():
+    er = EventRegistration(capacity=1)
+
+    result = er.register("u1")
+
+    assert result == UserStatus("registered")
+    assert result.message is not None
+    assert "registered" in result.message.lower()
+
+
+# Covers C1, C2, C10, AC2, AC8
+def test_multiple_promotions_after_multiple_cancellations():
+    er = EventRegistration(capacity=2)
+
+    er.register("u1")
+    er.register("u2")
+    er.register("u3")
+    er.register("u4")
+
+    er.cancel("u1")  # promotes u3
+    er.cancel("u2")  # promotes u4
+
+    assert er.status("u3") == UserStatus("registered")
+    assert er.status("u4") == UserStatus("registered")
+
+    snap = er.snapshot()
+    assert snap["registered"] == ["u3", "u4"]
+    assert snap["waitlist"] == []
+
+
+# Covers C1, C8, AC6
+def test_waitlist_positions_update_after_promotion():
+    er = EventRegistration(capacity=1)
+
+    er.register("u1")
+    er.register("u2")
+    er.register("u3")
+
+    er.cancel("u1")  # promote u2
+
+    assert er.status("u2") == UserStatus("registered")
+    assert er.status("u3") == UserStatus("waitlisted", 1)
+
+
+# Covers C1, C10, AC1, AC2
+def test_snapshot_state_consistency():
+    er = EventRegistration(capacity=2)
+
+    er.register("u1")
+    er.register("u2")
+    er.register("u3")
+
+    snap = er.snapshot()
+
+    assert snap["registered"] == ["u1", "u2"]
+    assert snap["waitlist"] == ["u3"]
+
+
+# Covers C7, supports edge case EC6
+def test_reregister_after_cancellation():
+    er = EventRegistration(capacity=1)
+
+    er.register("u1")
+    er.cancel("u1")
+
+    # user should be able to register again as a new request
+    s = er.register("u1")
+    assert s == UserStatus("registered")
+
+    Decision: accepted
