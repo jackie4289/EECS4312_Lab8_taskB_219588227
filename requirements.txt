@@ -1,24 +1,25 @@
 ## 1. Problem Understanding
 
 System purpose:
-The system manages registration for a single event with a fixed capacity. It allows users to register, places extra users on a FIFO waitlist when the event is full, and updates the registration state after each operation.
+The system manages registration for a single event with a fixed capacity. It registers users until capacity is reached, places additional users on a FIFO waitlist, and automatically promotes the earliest waitlisted user when a registered user cancels.
 
 Inputs to the system:
 - event capacity
 - user ID
-- registration request
-- cancellation request
+- register request
+- cancel request
 - status query
+- operation arrival order
 
 Outputs produced by the system:
-- registration result for a user
-- waitlist result for a user
-- current user status
+- result of each operation
 - updated ordered list of registered users
 - updated ordered list of waitlisted users
+- current status of a queried user
+- explanation text for rejection, waitlisting, promotion, or failure when applicable
 
 Primary goal of the system:
-The primary goal of the system is to manage event registration automatically and predictably with minimal manual effort, while remaining clear, deterministic, and reliable for different user needs.
+The primary goal of the system is to manage event registration automatically, predictably, and consistently while minimizing user effort and providing explicit explanations when important changes or failures occur.
 
 ---
 
@@ -28,25 +29,28 @@ A1:
 The system manages exactly one event at a time.
 
 A2:
-Each user is identified by a unique user ID.
+Each user is identified by a unique case-sensitive user ID.
 
 A3:
-Requests are processed one at a time in a deterministic order.
+Event capacity is a non-negative integer.
 
 A4:
-Capacity is a non-negative integer.
+Operations are processed one at a time in request queue order.
 
 A5:
 A user may exist in only one state at a time: registered, waitlisted, or absent.
 
 A6:
-The system must preserve FIFO ordering for the waitlist.
+The waitlist has no separate maximum size unless capacity or platform limits are explicitly added later.
 
 A7:
-Users may cancel whether they are registered or waitlisted.
+A canceled user who registers again is treated as a new request.
 
 A8:
-The system should return concise results, but important automatic changes must still be explicit.
+Status queries for waitlisted users should include waitlist position.
+
+A9:
+Explanations should be concise but explicit when a request is rejected, waitlisted, promoted, or fails.
 
 ---
 
@@ -65,28 +69,40 @@ FR4:
 The system shall place additional users in a FIFO waitlist when the event is full.
 
 FR5:
-The system shall automatically promote the earliest waitlisted user when a registered user cancels.  [persona-derived]
+The system shall automatically promote the earliest waitlisted user when a registered user cancels. [persona-derived]
 
 FR6:
-The system shall prevent duplicate registration requests from users who are already registered or waitlisted.
+The system shall prevent duplicate registration requests from users who are already registered or already waitlisted.
 
 FR7:
-The system shall allow a user to cancel their registration or waitlist participation.
+The system shall allow a user to cancel their registration or waitlist participation and return an explicit result for the cancellation. [persona-derived]
 
 FR8:
 The system shall allow a user to query their current status.
 
 FR9:
-The system shall return an explicit outcome for each request, such as registered, waitlisted, canceled, rejected, or not found.  [persona-derived]
+The system shall return an explicit result for every request, including registered, waitlisted, canceled, promoted, rejected, or not found. [persona-derived]
 
 FR10:
-The system shall provide a clear explanation when a request is rejected, when a user is waitlisted, or when a waitlisted user is promoted.  [persona-derived]
+The system shall return a concise explanation when a registration is rejected, when a user is waitlisted, when a waitlisted user is promoted, or when an operation fails. [persona-derived]
 
 FR11:
-The system shall produce deterministic outcomes when the same sequence of operations is repeated from the same initial state.  [persona-derived]
+The system shall produce deterministic outcomes when the same sequence of operations is repeated from the same initial state. [persona-derived]
 
 FR12:
-The system shall return concise status information with minimal extra interaction.  [persona-derived]
+The system shall process operations atomically so that system state never temporarily violates capacity, uniqueness, or ordering constraints. [persona-derived]
+
+FR13:
+The system shall process operations in request queue order when multiple valid operations occur at the same logical time. [persona-derived]
+
+FR14:
+The system shall return waitlist position when a waitlisted user queries status or is newly placed on the waitlist. [persona-derived]
+
+FR15:
+The system shall return promotion information in the same operation result that follows the cancellation which created the open spot. [persona-derived]
+
+FR16:
+The system shall return concise status information so the user can understand the outcome without unnecessary extra interaction. [persona-derived]
 
 ---
 
@@ -95,27 +111,27 @@ The system shall return concise status information with minimal extra interactio
 C1:
 Derived from persona attribute:
 Jane — Need: predictable and stable ordering of system decisions
-The system must preserve deterministic FIFO ordering for waitlist positions and promotions.
+The system must preserve deterministic ordering for both the registered list and the waitlist based on chronological successful registration or promotion.
 
 C2:
 Derived from persona attribute:
 Jane — Need: automatic handling of conflicts
-The system must automatically resolve full-capacity conflicts by waitlisting extra users and promoting the earliest waitlisted user when space becomes available.
+The system must automatically resolve full-capacity conflicts by waitlisting extra users and automatically promoting the earliest waitlisted user when space becomes available.
 
 C3:
 Derived from persona attribute:
 Jane — Pain Point: systems behave inconsistently in similar situations
-The system must produce the same registered list, waitlist order, and promotion results for identical sequences of operations.
+The system must produce the same registered list, waitlist order, and promotion results for identical sequences of operations from the same initial state.
 
 C4:
 Derived from persona attribute:
-Mo — Need: deterministic behavior under ties or conflicting conditions
-The system must apply a deterministic processing rule when rapid consecutive operations or ambiguous ordering conditions occur.
+Mo — Need: deterministic system behavior under ties or conflicting conditions
+When multiple operations occur at the same logical time, the system must process them in request queue order.
 
 C5:
 Derived from persona attribute:
-Mo — Need: clear explanations for changed, rejected, or promoted actions
-The system must return an understandable explanation when a registration is rejected, when a user is waitlisted, or when a user is promoted.
+Mo — Need: clear explanations when system actions change, reject, or promote users
+The system must return a concise explanation when a request is rejected, when a user is waitlisted, when a waitlisted user is promoted, or when a request fails.
 
 C6:
 Derived from persona attribute:
@@ -124,13 +140,23 @@ The system must explicitly acknowledge every request with a visible result inste
 
 C7:
 Derived from persona attribute:
-Mo — Need: explicit handling of edge cases instead of silent failure
-The system must explicitly handle edge cases such as capacity = 0, duplicate registration, cancellation of a missing user, re-registration after cancellation, and waitlist cancellation before promotion.
+Mo — Need: explicitly handle edge cases instead of silent failure
+The system must explicitly handle edge cases such as capacity = 0, duplicate registration, cancellation of a missing user, cancellation of a waitlisted user, re-registration after cancellation, and empty-waitlist promotion situations.
 
 C8:
 Derived from persona attribute:
 Jane — Behavior: prefers concise outputs and minimal interaction
-The system must return concise status results that let the user understand the outcome without unnecessary extra interaction.
+The system must return concise status results that let the user understand the outcome without unnecessary additional interaction.
+
+C9:
+Derived from persona attribute:
+Mo — Need: accessibility and reduced uncertainty through explicit system state
+The system must include waitlist position in the status of any waitlisted user.
+
+C10:
+Derived from persona attribute:
+Jane — Need: reliable automation without manual checking
+Each operation must be atomic so that the system state never temporarily violates capacity, uniqueness, or ordering constraints.
 
 ---
 
@@ -139,22 +165,22 @@ The system must return concise status results that let the user understand the o
 AC1:
 Given an event with capacity 2 and 2 users already registered,
 When a third user submits a registration request,
-Then the system places that user on the waitlist instead of the registered list.
+Then the system places that user on the waitlist and returns the user’s waitlist position.
 
 AC2:
 Given an event with capacity 2, users A and B registered, and users C then D on the waitlist,
 When user A cancels,
-Then user C is promoted to the registered list before user D.
+Then user C is promoted to the registered list before user D and the result includes promotion information.
 
 AC3:
 Given a user is already registered or already on the waitlist,
 When that same user submits another registration request,
-Then the system rejects the duplicate request and returns an explicit outcome.
+Then the system rejects the duplicate request and returns an explicit result.
 
 AC4:
 Given a user is neither registered nor waitlisted,
 When that user submits a cancellation request,
-Then the system returns an explicit not-found or failure outcome.
+Then the system returns an explicit not-found or failure result.
 
 AC5:
 Given the same initial state and the same sequence of registration and cancellation operations,
@@ -162,9 +188,9 @@ When the system executes that sequence twice,
 Then the final registered list and waitlist order are identical in both runs.
 
 AC6:
-Given a user requests their status,
+Given a waitlisted user requests their status,
 When the system processes the status query,
-Then it returns exactly one valid state indicating whether the user is registered, waitlisted, or absent.
+Then it returns the waitlisted state and the user’s current waitlist position.
 
 AC7:
 Given the event capacity is 0,
@@ -174,12 +200,27 @@ Then the system does not register the user and handles the case explicitly accor
 AC8:
 Given a waitlisted user is promoted after a cancellation creates an open spot,
 When the promotion occurs,
-Then the system updates the registration state so the promoted user appears in the registered list and no longer appears in the waitlist.
+Then the promoted user appears in the registered list, no longer appears in the waitlist, and the operation result explains the promotion.
 
 AC9:
 Given a registration request is rejected, a user is placed on the waitlist, or a waitlisted user is promoted,
-When the system returns the result of that operation,
-Then it includes a clear explanation of what happened and why.
+When the system returns the operation result,
+Then it includes a concise explanation of what happened and why.
+
+AC10:
+Given two valid operations occur at the same logical time,
+When the system processes them,
+Then it processes them in request queue order.
+
+AC11:
+Given a registered user cancels while the waitlist is empty,
+When the cancellation is processed,
+Then the user is removed from the registered list and no promotion occurs.
+
+AC12:
+Given a waitlisted user cancels,
+When the cancellation is processed,
+Then the user is removed from the waitlist and the positions of later waitlisted users shift forward by one.
 
 ---
 
@@ -187,64 +228,96 @@ Then it includes a clear explanation of what happened and why.
 
 EC1:
 Expected system behavior:
-If capacity = 0, no user is ever registered and all registration attempts are handled explicitly according to system rules.  [persona-derived]
+If capacity = 0, no user is registered and every registration request is handled explicitly without violating consistency. [persona-derived]
 
 EC2:
 Expected system behavior:
-If a user who is already registered or already waitlisted tries to register again, the system rejects the duplicate request with an explicit result.  [persona-derived]
+If a user who is already registered or already waitlisted tries to register again, the system rejects the request with an explicit result. [persona-derived]
 
 EC3:
 Expected system behavior:
-If a user who is not in the system tries to cancel, the system returns an explicit failure or not-found result instead of failing silently.  [persona-derived]
+If a user who is not in the system tries to cancel, the system returns an explicit not-found or failure result instead of failing silently. [persona-derived]
 
 EC4:
 Expected system behavior:
-If multiple users are on the waitlist and one registered user cancels, only the earliest waitlisted user is promoted.
+If a registered user cancels while the waitlist is empty, the registered spot becomes empty and no promotion occurs.
 
 EC5:
 Expected system behavior:
-If the same sequence of operations is repeated from the same initial state, the resulting registered list and waitlist must be identical.
+If a waitlisted user cancels before promotion, the user is removed and all later waitlist positions shift forward correctly.
 
 EC6:
 Expected system behavior:
-If a user cancels and then re-registers later, the new request is processed against the updated system state.
+If a user cancels and later re-registers, the new registration is treated as a new request against the updated state.
 
 EC7:
 Expected system behavior:
-If a waitlisted user cancels before promotion, they are removed and the remaining waitlist positions update correctly.
+If multiple cancellations occur in sequence, the system performs promotions one by one in FIFO order after each cancellation.
+
+EC8:
+Expected system behavior:
+If a registration request and a cancellation request occur at the same logical time, the system processes them in request queue order and produces a deterministic final state. [persona-derived]
 
 ---
 
 ## 7. Traceability
 
-FR1 -> C2 -> AC1
 FR4 -> C1, C2 -> AC1, AC2
-FR5 -> C1, C2, C4 -> AC2, AC8
+FR5 -> C1, C2, C10 -> AC2, AC8
 FR6 -> C6, C7 -> AC3
-FR7 -> C6, C7 -> AC4
-FR8 -> C8 -> AC6
-FR9 -> C6 -> AC3, AC4, AC6
-FR10 -> C5 -> AC9
-FR11 -> C3, C4 -> AC5
-FR12 -> C8 -> AC6
+FR7 -> C6, C7 -> AC4, AC12
+FR8 -> C8, C9 -> AC6
+FR9 -> C5, C6 -> AC3, AC4, AC9
+FR10 -> C5, C8 -> AC8, AC9
+FR11 -> C3, C4 -> AC5, AC10
+FR12 -> C10 -> AC2, AC11
+FR13 -> C4 -> AC10
+FR14 -> C9 -> AC1, AC6
+FR15 -> C2, C5 -> AC2, AC8
+FR16 -> C8 -> AC6, AC9
 
 ---
 
 ## Revision Notes
+
 Revision Note 1
-Requirement updated: deterministic ordering
-Reason: Task 6 review identified ambiguity in simultaneous operation handling.
-Action: Added queue-order processing rule for simultaneous operations.
+Requirement updated: FR12, C10
+Reason: Requirement review identified that atomic state updates were assumed but not stated explicitly.
+Action: Added an atomic processing requirement so system state never temporarily violates capacity, uniqueness, or ordering constraints.
 Triggered by LLM feedback: Yes
 
 Revision Note 2
-Requirement updated: status output
-Reason: Task 6 review identified ambiguity in what status queries return for waitlisted users.
-Action: Added requirement that waitlisted status includes waitlist position.
+Requirement updated: FR13, C4, AC10, EC8
+Reason: Requirement review identified ambiguity in how simultaneous or logically tied operations should be handled.
+Action: Added a deterministic queue-order processing rule for operations occurring at the same logical time.
 Triggered by LLM feedback: Yes
 
 Revision Note 3
-Requirement updated: state consistency
-Reason: Task 6 review identified missing constraint on atomic updates.
-Action: Added requirement that each operation is processed atomically.
+Requirement updated: A2, FR6
+Reason: Requirement review identified ambiguity in how duplicate users are identified.
+Action: Added the assumption that users are uniquely identified by a case-sensitive user ID.
+Triggered by LLM feedback: Yes
+
+Revision Note 4
+Requirement updated: FR14, C9, AC1, AC6
+Reason: Requirement review identified that waitlisted status output was too vague for users who need explicit feedback.
+Action: Added a requirement that waitlisted results and status queries include current waitlist position.
+Triggered by LLM feedback: Yes
+
+Revision Note 5
+Requirement updated: FR10, FR15, C5, AC8, AC9
+Reason: Requirement review identified ambiguity in how explanations and promotion visibility are returned.
+Action: Added a requirement that explanations are concise, explicit, and included in the same operation result for rejection, waitlisting, promotion, or failure.
+Triggered by LLM feedback: Yes
+
+Revision Note 6
+Requirement updated: EC4, AC11
+Reason: Requirement review identified that cancellation when the waitlist is empty was not explicitly covered.
+Action: Added an edge case and acceptance criterion defining that no promotion occurs when the waitlist is empty.
+Triggered by LLM feedback: Yes
+
+Revision Note 7
+Requirement updated: EC5, AC12
+Reason: Requirement review identified that cancellation of a waitlisted user was not explicitly verified.
+Action: Added an edge case and acceptance criterion requiring removal of the user and position updates for later waitlisted users.
 Triggered by LLM feedback: Yes
